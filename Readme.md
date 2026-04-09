@@ -233,84 +233,282 @@ B. AI 기반
 
 > 외부기관 결과지는 같은 이름, 잘못된 스캔, 식별자 누락 문제가 있어서 MPI 수준까지는 아니어도 환자 매칭 서브시스템이 반드시 필요하다.
 
-## 최종 구성요소
+## 운영 모델
 
-### 코어 엔진
+1) 문서 반입 → 
+2) 환자 후보 매칭 → 
+3) 문서 분류/추출 → 
+4) 사용자 검토/수정 → 
+5) FHIR 저장 → 
+6) EMR 반영.
 
-* 문서 수집 엔진
-* 문서 표준화 엔진
-* OCR 엔진
-* 문서 분류 엔진
-* 추출 엔진
-* 정규화/용어매핑 엔진
-* 요약 엔진
-* 검토/승인 엔진
-* EMR 연계 엔진
+## 최종 루틴
 
-### 운영 도구
+* 원본 보관: DocumentReference
+* 환자 연결: Patient
+* 진료 맥락 연결: Encounter가 있으면 연결
+* 개별 항목 저장: Observation
+* 문서 단위 결과 묶음: DiagnosticReport
+* 누가/어떻게 만들었는지: Provenance
+* 누가 보고 수정/전송했는지: AuditEvent
+* 검토 대기/승인/반려 상태: Task
 
-* 프로토콜 생성기/설정기
-* 기관별 템플릿 관리기
-* 룰/프롬프트 버전관리
-* 예외처리 큐
-* 재처리 콘솔
-* 대시보드/모니터링
+## 예시 시나리오
 
-### 보안/통제
+외부기관에서 PDF 결과지 1장이 들어왔고, CDIX가 아래를 추출했다고 가정할게.
 
-* RBAC
-* MFA
-* SSO
-* 감사로그
-* Provenance/이력관리
-* 암호화/비밀관리
+* 환자: Patient/12345
+* 결과지 제목: 외부 혈액검사 결과지
+* 검사일: 2026-04-08
+* 항목 1: HbA1c = 7.4 %
+* 항목 2: Creatinine = 1.21 mg/dL
+* 검토자 확인 완료
 
-### 플랫폼 기반
+```json
+{
+  "resourceType": "Bundle",
+  "type": "transaction",
+  "timestamp": "2026-04-09T10:15:00+09:00",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:docref-1",
+      "resource": {
+        "resourceType": "DocumentReference",
+        "identifier": [
+          {
+            "system": "https://harmonia.example/fhir/identifier/ingest-id",
+            "value": "ING-20260409-0001"
+          }
+        ],
+        "status": "current",
+        "docStatus": "final",
+        "type": {
+          "coding": [
+            {
+              "system": "https://harmonia.example/fhir/CodeSystem/document-type",
+              "code": "external-lab-result",
+              "display": "External Lab Result"
+            }
+          ],
+          "text": "외부기관 혈액검사 결과지"
+        },
+        "category": [
+          {
+            "text": "Laboratory"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/12345"
+        },
+        "date": "2026-04-09T09:58:00+09:00",
+        "author": [
+          {
+            "reference": "Organization/ext-lab-01",
+            "display": "외부검사기관 A"
+          }
+        ],
+        "custodian": {
+          "reference": "Organization/hospital-01",
+          "display": "도입병원"
+        },
+        "description": "외부기관 반입 혈액검사 결과지 원본",
+        "content": [
+          {
+            "attachment": {
+              "contentType": "application/pdf",
+              "title": "external-lab-result-20260408.pdf",
+              "url": "Binary/ext-doc-0001"
+            }
+          }
+        ],
+        "context": {
+          "period": {
+            "start": "2026-04-08T08:30:00+09:00",
+            "end": "2026-04-08T08:30:00+09:00"
+          },
+          "practiceSetting": {
+            "text": "진단검사의학"
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "DocumentReference"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:obs-hba1c",
+      "resource": {
+        "resourceType": "Observation",
+        "identifier": [
+          {
+            "system": "https://harmonia.example/fhir/identifier/extracted-item-id",
+            "value": "ING-20260409-0001-HBA1C"
+          }
+        ],
+        "status": "final",
+        "category": [
+          {
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "https://harmonia.example/fhir/CodeSystem/lab-item",
+              "code": "HBA1C",
+              "display": "HbA1c"
+            }
+          ],
+          "text": "당화혈색소(HbA1c)"
+        },
+        "subject": {
+          "reference": "Patient/12345"
+        },
+        "effectiveDateTime": "2026-04-08T08:30:00+09:00",
+        "issued": "2026-04-09T10:15:00+09:00",
+        "performer": [
+          {
+            "reference": "Organization/ext-lab-01",
+            "display": "외부검사기관 A"
+          }
+        ],
+        "valueQuantity": {
+          "value": 7.4,
+          "unit": "%",
+          "system": "http://unitsofmeasure.org",
+          "code": "%"
+        },
+        "interpretation": [
+          {
+            "text": "High"
+          }
+        ],
+        "referenceRange": [
+          {
+            "text": "4.0 - 6.0 %"
+          }
+        ]
+      },
+      "request": {
+        "method": "POST",
+        "url": "Observation"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:obs-creatinine",
+      "resource": {
+        "resourceType": "Observation",
+        "identifier": [
+          {
+            "system": "https://harmonia.example/fhir/identifier/extracted-item-id",
+            "value": "ING-20260409-0001-CRE"
+          }
+        ],
+        "status": "final",
+        "category": [
+          {
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "https://harmonia.example/fhir/CodeSystem/lab-item",
+              "code": "CRE",
+              "display": "Creatinine"
+            }
+          ],
+          "text": "크레아티닌"
+        },
+        "subject": {
+          "reference": "Patient/12345"
+        },
+        "effectiveDateTime": "2026-04-08T08:30:00+09:00",
+        "issued": "2026-04-09T10:15:00+09:00",
+        "performer": [
+          {
+            "reference": "Organization/ext-lab-01",
+            "display": "외부검사기관 A"
+          }
+        ],
+        "valueQuantity": {
+          "value": 1.21,
+          "unit": "mg/dL",
+          "system": "http://unitsofmeasure.org",
+          "code": "mg/dL"
+        },
+        "referenceRange": [
+          {
+            "text": "0.7 - 1.2 mg/dL"
+          }
+        ]
+      },
+      "request": {
+        "method": "POST",
+        "url": "Observation"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:diagreport-1",
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "identifier": [
+          {
+            "system": "https://harmonia.example/fhir/identifier/ingest-id",
+            "value": "ING-20260409-0001"
+          }
+        ],
+        "status": "final",
+        "category": [
+          {
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "https://harmonia.example/fhir/CodeSystem/report-type",
+              "code": "external-lab-report",
+              "display": "External Laboratory Report"
+            }
+          ],
+          "text": "외부기관 혈액검사 결과지"
+        },
+        "subject": {
+          "reference": "Patient/12345"
+        },
+        "effectiveDateTime": "2026-04-08T08:30:00+09:00",
+        "issued": "2026-04-09T10:15:00+09:00",
+        "performer": [
+          {
+            "reference": "Organization/ext-lab-01",
+            "display": "외부검사기관 A"
+          }
+        ],
+        "result": [
+          {
+            "reference": "urn:uuid:obs-hba1c"
+          },
+          {
+            "reference": "urn:uuid:obs-creatinine"
+          }
+        ],
+        "conclusion": "외부기관 반입 혈액검사 결과지에서 HbA1c 7.4%, Creatinine 1.21 mg/dL를 구조화하였으며 사용자 검토 후 확정함.",
+        "presentedForm": [
+          {
+            "contentType": "application/pdf",
+            "title": "external-lab-result-20260408.pdf",
+            "url": "Binary/ext-doc-0001"
+          }
+        ]
+      },
+      "request": {
+        "method": "POST",
+        "url": "DiagnosticReport"
+      }
+    }
+  ]
+}
+```
 
-* 워크플로우 오케스트레이터
-* 메시지 큐
-* 스토리지
-* 모델 서빙
-* 관측성 스택
-
-## CDIX 하위모듈
-
-* CDIX Intake: 반입/수집
-* CDIX Normalize: 표준화/전처리
-* CDIX OCR: 문자 인식
-* CDIX Protocol Studio: 프로토콜 생성기/설정기
-* CDIX Extract: 필드 추출
-* CDIX Normalize+: 검사명/단위/코드 정규화
-* CDIX Review: 검토/승인
-* CDIX Relay: EMR 연계
-* CDIX Audit: 감사/추적
-* CDIX Ops: 모니터링/재처리
-
-## MVP 스케쥴
-
-### 1차 MVP 필수
-
-* Intake
-* Normalize
-* OCR
-* Protocol Studio
-* Extract
-* Review
-* Relay
-* RBAC
-* Audit log
-
-### 1.5차
-
-* LLM 요약
-* 용어/단위 정규화 고도화
-* 환자 매칭 고도화
-* 예외 큐
-* 운영 대시보드
-
-### 2차
-
-* 다기관 템플릿 자동 생성
-* 모델 추천/자기학습 보조
-* FHIR DocumentReference/Provenance/AuditEvent 정식 지원
-* MFA/SSO 통합 고도화
